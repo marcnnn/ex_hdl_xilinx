@@ -45,7 +45,7 @@ defmodule ExHdlXilinx.HelloTest do
   test "generated SV lints with the simulation stubs" do
     top = Hello.top(blink_bit: 3)
     files = SV.generate(top, sim: true)
-    assert Map.keys(files) |> Enum.count(&String.starts_with?(&1, "sim/")) == 3
+    assert Map.keys(files) |> Enum.count(&String.ends_with?(&1, "_sim.sv")) == 3
 
     # no warnings but unread instance output wires (exhdl does not wrap those; see NEEDS.md)
     {_, out} = Lint.run(files, "hello_card_b3")
@@ -137,7 +137,7 @@ defmodule ExHdlXilinx.HelloTest do
       files = Hello.write(dir, blink_bit: 3) |> Enum.map(&Path.relative_to(&1, dir))
       assert "build.tcl" in files and "constraints.xdc" in files
       assert "src/hello_card_b3.sv" in files
-      assert "sim/MMCME4_ADV.sv" in files
+      assert "sim/MMCME4_ADV_sim.sv" in files
       refute Enum.any?(files, &(String.starts_with?(&1, "src/") and &1 =~ "MMCME4"))
       assert File.dir?(Path.join(dir, "out"))
     end
@@ -260,5 +260,10 @@ defmodule ExHdlXilinx.HelloTest do
       assert File.read!(Path.join(dir, "src/hello_card_b3.sv")) =~ "module hello_card_b3"
       assert staged.top == "hello_card_b3"
     end
+  end
+
+  @tag :verilator
+  test "the card top builds for Verilator co-simulation against the stubs" do
+    assert {:ok, %ExHdl.RTL.Cosim{}} = ExHdl.RTL.Cosim.build(Hello.top([]), [])
   end
 end

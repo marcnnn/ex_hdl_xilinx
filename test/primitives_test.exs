@@ -179,17 +179,17 @@ defmodule ExHdlXilinx.PrimitivesTest do
   describe "simulation stubs" do
     test "sim_sources covers the primitives of a hierarchy, under sim/" do
       src = P.sim_sources(mmcm_top())
-      assert Map.keys(src) == ["sim/MMCME4_ADV.sv"]
-      assert src["sim/MMCME4_ADV.sv"] =~ "SIMULATION STUB"
-      assert src["sim/MMCME4_ADV.sv"] =~ "Not for\n// synthesis"
+      assert Map.keys(src) == ["MMCME4_ADV_sim.sv"]
+      assert src["MMCME4_ADV_sim.sv"] =~ "SIMULATION STUB"
+      assert src["MMCME4_ADV_sim.sv"] =~ "Not for\n// synthesis"
       assert P.sim_sources(ExHdl.RTL.Examples.counter()) == %{}
-      refute Enum.any?(Map.keys(SV.generate(mmcm_top())), &String.starts_with?(&1, "sim/"))
-      assert Map.take(SV.generate(mmcm_top(), sim: true), ["sim/MMCME4_ADV.sv"]) == src
+      refute Enum.any?(Map.keys(SV.generate(mmcm_top())), &String.ends_with?(&1, "_sim.sv"))
+      assert Map.take(SV.generate(mmcm_top(), sim: true), ["MMCME4_ADV_sim.sv"]) == src
     end
 
     test "real parameters are emitted as SV reals" do
       sv = SV.generate(mmcm_top(), sim: true)
-      assert sv["sim/MMCME4_ADV.sv"] =~ "parameter real CLKFBOUT_MULT_F = 5.0"
+      assert sv["MMCME4_ADV_sim.sv"] =~ "parameter real CLKFBOUT_MULT_F = 5.0"
     end
 
     @tag :verilator

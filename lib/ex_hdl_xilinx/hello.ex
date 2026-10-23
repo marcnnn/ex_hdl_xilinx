@@ -155,8 +155,8 @@ defmodule ExHdlXilinx.Hello do
     Runner.stage(build, dir)
 
     for {name, text} <- P.sim_sources(top(Keyword.take(opts, [:blink_bit]))) do
-      File.mkdir_p!(Path.join(dir, Path.dirname(name)))
-      File.write!(Path.join(dir, name), text)
+      File.mkdir_p!(Path.join(dir, "sim"))
+      File.write!(Path.join([dir, "sim", name]), text)
     end
 
     Path.join(dir, "**/*") |> Path.wildcard() |> Enum.reject(&File.dir?/1) |> Enum.sort()

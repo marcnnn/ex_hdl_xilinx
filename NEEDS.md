@@ -148,3 +148,15 @@ uses it yet (`IOBUF` is not in the table). Still open: 2, 3, 7.
 Earlier wishes now met: vector top ports with stable names and
 `Module.ports` (used by `Vivado.Build` to check ports against board signals),
 differential pairs as `<base>_p`/`<base>_n` plain inputs.
+
+## Wave 3 follow-ups
+
+10. **`ExHdl.Sim.Verilator.compile/8` does not create subdirectories.** A
+    `sim_sources` key `"sim/BUFG.sv"` fails with `File.Error ... no such file
+    or directory`. Stubs are therefore named `<NAME>_sim.sv`. Wish:
+    `File.mkdir_p!(Path.dirname(path))` before writing.
+11. **Still to do here:** behavioural models that make co-simulation of the
+    card top meaningful, not just buildable: MMCME4_ADV generating the
+    divided clocks (needs `--timing` or harness-driven internal clocks, item
+    7), BUFG_GT `DIV`, and URAM288 / RAMB36E2 black boxes with read latency
+    models (not in the primitive table yet; the stream kernels infer RAM).

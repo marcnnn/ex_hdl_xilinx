@@ -46,7 +46,7 @@ defmodule ExHdlXilinx.Primitives do
 
   ## Simulation stubs
 
-  Every primitive carries its stub as `sim_sources:` (`"sim/<NAME>.sv"`):
+  Every primitive carries its stub as `sim_sources:` (`"<NAME>_sim.sv"`, flat because `ExHdl.Sim.Verilator` does not create subdirectories):
   minimal behavioural SystemVerilog for Verilator lint and simulation.
   `ExHdl.Backends.SystemVerilog.RTL.generate(top, sim: true)` and
   `ExHdl.RTL.Cosim` include them; plain `generate/1` (and so Vivado, which
@@ -72,7 +72,7 @@ defmodule ExHdlXilinx.Primitives do
 
   @doc """
   The black box of primitive `name` (case-insensitive). Its simulation stub
-  is attached as `sim_sources:` (`"sim/<NAME>.sv"`), so
+  is attached as `sim_sources:` (`"<NAME>_sim.sv"`, flat because `ExHdl.Sim.Verilator` does not create subdirectories), so
   `ExHdl.Backends.SystemVerilog.RTL.generate(top, sim: true)` and
   `ExHdl.RTL.Cosim` pick it up while synthesis never sees it.
   """
@@ -86,7 +86,7 @@ defmodule ExHdlXilinx.Primitives do
       spec
       |> Keyword.take([:params, :model, :comb, :clock_outputs])
       |> Keyword.update(:params, [], &realify(&1, Keyword.get(spec, :reals, [])))
-      |> Keyword.put(:sim_sources, %{"sim/#{name}.sv" => stub(name)})
+      |> Keyword.put(:sim_sources, %{"#{name}_sim.sv" => stub(name)})
     )
   end
 
@@ -236,8 +236,8 @@ defmodule ExHdlXilinx.Primitives do
 
   @doc """
   Simulation stubs for the primitives in the hierarchy of `module` (or of
-  every module of a list): `%{"sim/<NAME>.sv" => text}`, the union of the
-  black boxes' `sim_sources`. The same files as the `sim/` entries of
+  every module of a list): `%{"<NAME>_sim.sv" => text}`, the union of the
+  black boxes' `sim_sources`. The same files as the `_sim.sv` entries of
   `ExHdl.Backends.SystemVerilog.RTL.generate(module, sim: true)`.
   """
   @spec sim_sources(Module.t() | [Module.t()]) :: %{String.t() => String.t()}
