@@ -10,9 +10,9 @@ defmodule ExHdlXilinx.Primitives.Specs do
   #               domain of a clock the primitive does not take as a port
   #   @dom        port domain, ? marks a port or width I am unsure about
   #
-  # `params` carry integers, strings and {:bits, w, v}; `reals` are
-  # real-valued SV parameters, which the RTL backend cannot emit as reals,
-  # so they hold integer values and the stub declares them as real.
+  # `params` carry integers, strings and {:bits, w, v}; `reals` are the
+  # real-valued SV parameters, emitted as `{:real, v}` (`10.0`).
+  # `clock_outputs` are outputs declared `clock: true`.
   # `ties` are the values the unconnected inputs get in `Primitives.inst/3`
   # (default 0). `comb` lists the inputs an output depends on (default none).
 
@@ -46,6 +46,7 @@ defmodule ExHdlXilinx.Primitives.Specs do
         drives: ~w(O)
       },
       "IBUFDS_GTE4" => %{
+        clock_outputs: ~w(O ODIV2)a,
         params: [
           REFCLK_EN_TX_PATH: {:bits, 1, 0},
           REFCLK_HROW_CK_SEL: {:bits, 2, 0},
@@ -58,12 +59,14 @@ defmodule ExHdlXilinx.Primitives.Specs do
         drives: ~w(O ODIV2)
       },
       "BUFG" => %{
+        clock_outputs: [:O],
         ports: "c:I o:O",
         model: Models.ClockBuf,
         stub: "assign O = I;",
         drives: ~w(O)
       },
       "BUFGCE" => %{
+        clock_outputs: [:O],
         params: [
           CE_TYPE: "SYNC",
           IS_CE_INVERTED: {:bits, 1, 0},
@@ -77,6 +80,7 @@ defmodule ExHdlXilinx.Primitives.Specs do
         drives: ~w(O)
       },
       "BUFG_GT" => %{
+        clock_outputs: [:O],
         params: [SIM_DEVICE: "ULTRASCALE_PLUS", STARTUP_SYNC: "FALSE"],
         ports: "i:I i:CE i:CEMASK i:CLR i:CLRMASK i:DIV[3] o:O",
         ties: [CE: 1],
@@ -85,6 +89,7 @@ defmodule ExHdlXilinx.Primitives.Specs do
         drives: ~w(O)
       },
       "MMCME4_ADV" => %{
+        clock_outputs: Enum.map(@mmcm_clkout ++ ~w(CLKFBOUT CLKFBOUTB), &String.to_atom/1),
         params: [
           BANDWIDTH: "OPTIMIZED",
           CLKFBOUT_MULT_F: 5,
@@ -140,6 +145,7 @@ defmodule ExHdlXilinx.Primitives.Specs do
         drives: ~w(LOCKED CLKFBOUT CLKOUT0 CLKOUT1 CLKOUT2 CLKOUT3 CLKOUT4 CLKOUT5 CLKOUT6)
       },
       "PLLE4_ADV" => %{
+        clock_outputs: ~w(CLKOUT0 CLKOUT0B CLKOUT1 CLKOUT1B CLKOUTPHY CLKFBOUT)a,
         params: [
           CLKFBOUT_MULT: 5,
           CLKFBOUT_PHASE: 0,

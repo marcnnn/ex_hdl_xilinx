@@ -7,7 +7,7 @@ defmodule ExHdlXilinx.HelloTest do
   alias ExHdlXilinx.Boards.AS02MC04
   alias ExHdlXilinx.Test.Lint
   alias ExHdlXilinx.Vivado.{Build, Runner, Tcl}
-  alias ExHdlXilinx.{Hello, Primitives}
+  alias ExHdlXilinx.Hello
 
   setup do
     dir = Path.join(System.tmp_dir!(), "hello_#{System.unique_integer([:positive])}")
@@ -44,7 +44,7 @@ defmodule ExHdlXilinx.HelloTest do
   @tag :verilator
   test "generated SV lints with the simulation stubs" do
     top = Hello.top(blink_bit: 3)
-    files = Map.merge(SV.generate(top), Primitives.sim_sources(top))
+    files = SV.generate(top, sim: true)
     assert Map.keys(files) |> Enum.count(&String.starts_with?(&1, "sim/")) == 3
 
     # no warnings but unread instance output wires (exhdl does not wrap those; see NEEDS.md)

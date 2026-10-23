@@ -138,6 +138,13 @@ ExHdl.RTL` is in effect.
 9. **No `inout`.** Still needed for `SYSMONE4` I2C, SFP I2C and the
    configuration pins; the XDC side already handles `:inout` pins.
 
+Met by exhdl wave 3 and adopted here: 1 (reals: `{:real, v}` defaults,
+SV `10.0`), 4 (`Primitives.box/3` is `ExHdl.RTL.black_box_from/3`), 5 (`u.O`
+and `pin/2`), 6 (stubs are `sim_sources:` of each primitive, so
+`SV.generate(top, sim: true)` and `Cosim` see them), 8 (clock outputs are
+`clock: true`, metadata only so far). 9 (`inout`) exists; no primitive here
+uses it yet (`IOBUF` is not in the table). Still open: 2, 3, 7.
+
 Earlier wishes now met: vector top ports with stable names and
 `Module.ports` (used by `Vivado.Build` to check ports against board signals),
 differential pairs as `<base>_p`/`<base>_n` plain inputs.

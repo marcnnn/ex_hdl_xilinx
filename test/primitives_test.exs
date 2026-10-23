@@ -31,7 +31,11 @@ defmodule ExHdlXilinx.PrimitivesTest do
     assert [:clkin1, :dclk] == Enum.map(m.domains, & &1.name)
     assert %{dir: :output, type: {:u, 1}} = port(m, :LOCKED)
     assert %{type: {:u, 16}} = port(m, :DO)
-    assert m.params[:CLKFBOUT_MULT_F] == 5
+    assert m.params[:CLKFBOUT_MULT_F] == {:real, 5}
+    assert m.params[:DIVCLK_DIVIDE] == 1
+    assert :CLKOUT0 in m.clock_outputs and :CLKFBOUT in m.clock_outputs
+    refute :LOCKED in m.clock_outputs
+    assert P.bufg().clock_outputs == [:O]
 
     gt = P.gtye4_channel()
     assert %{type: {:u, 128}, domain: :txusrclk2, dir: :input} = port(gt, :TXDATA)
@@ -180,6 +184,12 @@ defmodule ExHdlXilinx.PrimitivesTest do
       assert src["sim/MMCME4_ADV.sv"] =~ "Not for\n// synthesis"
       assert P.sim_sources(ExHdl.RTL.Examples.counter()) == %{}
       refute Enum.any?(Map.keys(SV.generate(mmcm_top())), &String.starts_with?(&1, "sim/"))
+      assert Map.take(SV.generate(mmcm_top(), sim: true), ["sim/MMCME4_ADV.sv"]) == src
+    end
+
+    test "real parameters are emitted as SV reals" do
+      sv = SV.generate(mmcm_top(), sim: true)
+      assert sv["sim/MMCME4_ADV.sv"] =~ "parameter real CLKFBOUT_MULT_F = 5.0"
     end
 
     @tag :verilator
@@ -208,8 +218,7 @@ defmodule ExHdlXilinx.PrimitivesTest do
           y <~ reduce_xor(cat(outs))
         end
 
-      files = Map.merge(SV.generate(top), P.sim_sources(top))
-      {ok?, out} = Lint.run(files, "all_prims", ["-Wno-UNUSEDSIGNAL"])
+      {ok?, out} = Lint.run(SV.generate(top, sim: true), "all_prims", ["-Wno-UNUSEDSIGNAL"])
       assert ok?, out
     end
   end

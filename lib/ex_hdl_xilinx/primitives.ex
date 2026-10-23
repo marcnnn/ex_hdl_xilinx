@@ -30,32 +30,32 @@ defmodule ExHdlXilinx.Primitives do
   `unsure/1` lists the ports marked uncertain; `notes/1` the scope notes.
   Parameters are the commonly used ones, not the full list. Real-valued
   parameters (`CLKIN1_PERIOD`, `CLKFBOUT_MULT_F`, `REFCLK_FREQUENCY`, ...)
-  are integers, because the RTL backend emits integers and strings only: 10
-  for a 100 MHz period works in Vivado and Verilator, a fractional divider
-  does not. Duty cycles and jitter keep their Vivado defaults. See NEEDS.md.
+  default to `{:real, v}` and are emitted as SV reals (`10.0`); instances
+  may pass floats (`CLKOUT0_DIVIDE_F: 2.5`). Duty cycles and jitter keep
+  their Vivado defaults.
 
   Ports that are clocks of the design (`MMCME4_ADV.CLKIN1`, `BUFG.I`,
   `GTYE4_CHANNEL.TXUSRCLK2`, `DCLK`) are clock inputs of a black box domain
   named like the port in lower case (`:clkin1`); `inst/3` maps them with
   `clocks:` / `clock:`. Primitive outputs that are clocks (`BUFG.O`,
-  `MMCME4_ADV.CLKOUT0`) are ordinary data outputs: assign them to the clock
-  of an internal domain (`domain :c250, clock: :clk250, clock_port: false`).
+  `MMCME4_ADV.CLKOUT0`) are declared `clock: true` (`Module.clock_outputs`)
+  and assigned to the clock of an internal domain (`domain :c250, clock: :clk250, clock_port: false`).
   The BEAM simulator drives every clock of the top module ideally, whatever
   drives it, so models return 0 on clock outputs; MMCM `LOCKED` and `RST`
   behave (`ExHdlXilinx.Primitives.Models`).
 
   ## Simulation stubs
 
-  `sim_sources/1` returns `%{"sim/<NAME>.sv" => text}` for the primitives
-  used below a module: minimal behavioural SystemVerilog for Verilator lint
-  and simulation. They are not for synthesis (the files define modules that
-  Vivado already owns) and are never part of
-  `ExHdl.Backends.SystemVerilog.RTL.generate/1`. The MMCM/PLL stub passes
+  Every primitive carries its stub as `sim_sources:` (`"sim/<NAME>.sv"`):
+  minimal behavioural SystemVerilog for Verilator lint and simulation.
+  `ExHdl.Backends.SystemVerilog.RTL.generate(top, sim: true)` and
+  `ExHdl.RTL.Cosim` include them; plain `generate/1` (and so Vivado, which
+  owns these modules) does not. `sim_sources/1` collects them. The MMCM/PLL stub passes
   `CLKIN1` to every output (wrong frequency) and raises `LOCKED` after 16
   cycles; the others tie outputs to 0 except buffers and delays (`O = I`).
   """
 
-  alias ExHdl.RTL.{Builder, Module}
+  alias ExHdl.RTL.Module
   alias ExHdlXilinx.Primitives.Specs
 
   @specs Specs.all()
@@ -70,26 +70,67 @@ defmodule ExHdlXilinx.Primitives do
     def unquote(fun)(), do: module(unquote(name))
   end
 
-  @doc "The black box of primitive `name` (case-insensitive)."
+  @doc """
+  The black box of primitive `name` (case-insensitive). Its simulation stub
+  is attached as `sim_sources:` (`"sim/<NAME>.sv"`), so
+  `ExHdl.Backends.SystemVerilog.RTL.generate(top, sim: true)` and
+  `ExHdl.RTL.Cosim` pick it up while synthesis never sees it.
+  """
   @spec module(String.t()) :: Module.t()
   def module(name) do
     {name, spec} = fetch!(name)
-    box(name, Keyword.fetch!(spec, :ports), Keyword.take(spec, [:params, :model, :comb]))
+
+    box(
+      name,
+      Keyword.fetch!(spec, :ports),
+      spec
+      |> Keyword.take([:params, :model, :comb, :clock_outputs])
+      |> Keyword.update(:params, [], &realify(&1, Keyword.get(spec, :reals, [])))
+      |> Keyword.put(:sim_sources, %{"sim/#{name}.sv" => stub(name)})
+    )
+  end
+
+  # Real-valued parameters as `{:real, v}`, so the SV backend emits `10.0`.
+  defp realify(params, reals) do
+    for {k, v} <- params, do: {k, if(k in reals and is_number(v), do: {:real, v}, else: v)}
   end
 
   @doc """
   A black box from a port string (grammar in `ExHdlXilinx.Primitives.Specs`:
   `i:NAME[w] o:NAME[w] c:CLOCK d:domain`, `@domain` and `?` suffixes).
-  Options: `params:`, `model:`, `comb:` (output => input list). Used for IP
-  cores by `ExHdlXilinx.Vivado.IP`.
+  Options: `params:`, `model:`, `comb:` (output => input list),
+  `clock_outputs:` (outputs declared `clock: true`), `sim_sources:`. Used
+  for IP cores by `ExHdlXilinx.Vivado.IP`.
   """
   @spec box(String.t(), String.t(), keyword()) :: Module.t()
   def box(name, ports, opts \\ []) do
-    Builder.build(
-      :black_box,
-      name,
-      [params: Keyword.get(opts, :params, []), model: opts[:model]],
-      fn -> declare(tokens(ports), Keyword.get(opts, :comb, [])) end
+    toks = tokens(ports)
+    comb = Keyword.get(opts, :comb, [])
+    clock_outputs = Keyword.get(opts, :clock_outputs, [])
+
+    domains =
+      for(%{kind: :c, name: n} <- toks, do: {dom(n), clock: n, reset: nil}) ++
+        for %{kind: :d, name: n} <- toks,
+            do: {n, clock: :"clk_#{n}", reset: nil, clock_port: false}
+
+    ports =
+      for t <- toks, t.kind in [:i, :o] do
+        case t.kind do
+          :i ->
+            {:input, t.name, t.width, domain: t.domain}
+
+          :o ->
+            {:output, t.name, t.width,
+             [domain: t.domain, comb_from: Keyword.get(comb, t.name, :none)] ++
+               if(t.name in clock_outputs, do: [clock: true], else: [])}
+        end
+      end
+
+    ExHdl.RTL.black_box_from(name, ports,
+      domains: domains,
+      params: Keyword.get(opts, :params, []),
+      model: opts[:model],
+      sim_sources: Keyword.get(opts, :sim_sources, %{})
     )
   end
 
@@ -127,30 +168,6 @@ defmodule ExHdlXilinx.Primitives do
   end
 
   defp pad(l, n), do: l ++ List.duplicate("", n - length(l))
-
-  defp declare(toks, comb) do
-    for %{kind: :c, name: n} <- toks,
-        do: ExHdl.RTL.domain(dom(n), clock: n, reset: nil)
-
-    for %{kind: :d, name: n} <- toks,
-        do: ExHdl.RTL.domain(n, clock: :"clk_#{n}", reset: nil, clock_port: false)
-
-    for t <- toks do
-      case t.kind do
-        :i ->
-          ExHdl.RTL.input(t.name, t.width, domain: t.domain)
-
-        :o ->
-          ExHdl.RTL.output(t.name, t.width,
-            domain: t.domain,
-            comb_from: Keyword.get(comb, t.name, :none)
-          )
-
-        _ ->
-          :ok
-      end
-    end
-  end
 
   defp dom(clock_port),
     do: clock_port |> Atom.to_string() |> String.downcase() |> String.to_atom()
@@ -219,15 +236,17 @@ defmodule ExHdlXilinx.Primitives do
 
   @doc """
   Simulation stubs for the primitives in the hierarchy of `module` (or of
-  every module of a list): `%{"sim/<NAME>.sv" => text}`.
+  every module of a list): `%{"sim/<NAME>.sv" => text}`, the union of the
+  black boxes' `sim_sources`. The same files as the `sim/` entries of
+  `ExHdl.Backends.SystemVerilog.RTL.generate(module, sim: true)`.
   """
   @spec sim_sources(Module.t() | [Module.t()]) :: %{String.t() => String.t()}
   def sim_sources(modules) do
     modules
     |> List.wrap()
     |> Enum.flat_map(&Module.hierarchy/1)
-    |> Enum.filter(&(&1.kind == :black_box and Map.has_key?(@specs, &1.name)))
-    |> Map.new(&{"sim/#{&1.name}.sv", stub(&1.name)})
+    |> Enum.filter(&(&1.kind == :black_box))
+    |> Enum.reduce(%{}, &Map.merge(&2, &1.sim_sources))
   end
 
   @doc """
@@ -254,7 +273,7 @@ defmodule ExHdlXilinx.Primitives do
     render_stub(
       name,
       toks,
-      Keyword.get(spec, :params, []),
+      realify(Keyword.get(spec, :params, []), Keyword.get(spec, :reals, [])),
       Keyword.get(spec, :reals, []),
       Keyword.get(spec, :drives, []),
       spec[:stub]
@@ -308,10 +327,14 @@ defmodule ExHdlXilinx.Primitives do
 
   defp ptype(true, _), do: "real"
   defp ptype(_, {:bits, w, _}), do: "logic [#{w - 1}:0]"
+  defp ptype(_, {:real, _}), do: "real"
+  defp ptype(_, v) when is_float(v), do: "real"
   defp ptype(_, v) when is_integer(v), do: "integer"
   defp ptype(_, v) when is_binary(v), do: "string"
 
   defp pval({:bits, w, v}), do: "#{w}'h#{Integer.to_string(v, 16)}"
+  defp pval({:real, v}), do: pval(v / 1)
+  defp pval(v) when is_float(v), do: :erlang.float_to_binary(v, [:short])
   defp pval(v) when is_integer(v), do: Integer.to_string(v)
   defp pval(v) when is_binary(v), do: inspect(v)
 end
