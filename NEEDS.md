@@ -154,7 +154,9 @@ differential pairs as `<base>_p`/`<base>_n` plain inputs.
 10. **`ExHdl.Sim.Verilator.compile/8` does not create subdirectories.** A
     `sim_sources` key `"sim/BUFG.sv"` fails with `File.Error ... no such file
     or directory`. Stubs are therefore named `<NAME>_sim.sv`. Wish:
-    `File.mkdir_p!(Path.dirname(path))` before writing.
+    `File.mkdir_p!(Path.dirname(path))` before writing. Met in exhdl
+    13e678f (sources are written under `src/` with their subdirectories);
+    the flat `_sim.sv` names can stay.
 11. **Still to do here:** behavioural models that make co-simulation of the
     card top meaningful, not just buildable: MMCME4_ADV generating the
     divided clocks (needs `--timing` or harness-driven internal clocks, item
