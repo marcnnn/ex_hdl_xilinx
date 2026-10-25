@@ -143,7 +143,7 @@ SV `10.0`), 4 (`Primitives.box/3` is `ExHdl.RTL.black_box_from/3`), 5 (`u.O`
 and `pin/2`), 6 (stubs are `sim_sources:` of each primitive, so
 `SV.generate(top, sim: true)` and `Cosim` see them), 8 (clock outputs are
 `clock: true`, metadata only so far). 9 (`inout`) exists; no primitive here
-uses it yet (`IOBUF` is not in the table). Still open: 2, 3, 7.
+uses it yet (`IOBUF` is not in the table). Still open: 3 (2 and 7 are met since, see item 11).
 
 Earlier wishes now met: vector top ports with stable names and
 `Module.ports` (used by `Vivado.Build` to check ports against board signals),
@@ -157,8 +157,35 @@ differential pairs as `<base>_p`/`<base>_n` plain inputs.
     `File.mkdir_p!(Path.dirname(path))` before writing. Met in exhdl
     13e678f (sources are written under `src/` with their subdirectories);
     the flat `_sim.sv` names can stay.
-11. **Still to do here:** behavioural models that make co-simulation of the
-    card top meaningful, not just buildable: MMCME4_ADV generating the
-    divided clocks (needs `--timing` or harness-driven internal clocks, item
-    7), BUFG_GT `DIV`, and URAM288 / RAMB36E2 black boxes with read latency
-    models (not in the primitive table yet; the stream kernels infer RAM).
+11. **Behavioural models for co-simulation.** Done here (`Primitives.Clocking`,
+    `Primitives.Ram`, `Primitives.Models`): the MMCM lock follows the instance
+    parameters (an out-of-range VCO never locks) and `Clocking.sim_clocks/3`
+    turns the multiply and divide parameters into the `clocks:` option of
+    `Sim`/`Cosim` (`Hello.clocks/0`); with Verilator `--timing` the MMCM stub
+    generates the output clocks itself, the BUFG_GT stub divides by `DIV + 1`;
+    RAMB36E2, RAMB18E2, URAM288_BASE and URAM288 are black boxes with a BEAM
+    model and an SV model that agree cycle by cycle (random stimulus in
+    `test/ram_test.exs`). Limits are in the module docs.
+
+12. **Models with several domains on one clock** (exhdl branch `ex/w5-xil`,
+    unmerged). `Sim.Flat` kept one `{clock => domain}` entry per model, so a
+    black box whose domains map to the same clock (a block RAM with both
+    ports on `clk`, an MMCM with `CLKIN1` and `DCLK` on one clock) was clocked
+    in the last domain only. The branch keeps `{clock, domain}` pairs; the tests
+    that need it carry `@tag :shared_clock` and are excluded automatically
+    without it (`EXHDL_PATH=../exhdl-xil mix test` runs them).
+
+13. **Black box outputs that are clocks still cannot come from a model** (item
+    8): `Sim` and `Cosim` take the periods from `clocks:`, so `Clocking`
+    computes them from the parameters; the MMCM stub's generated clocks
+    are only seen by a testbench with `--timing` (`test/fixtures/sv/`), not by
+    `Cosim`, whose harness has no time. Wish: let a model give a clock output
+    its period and phase, so `Sim` needs no `clocks:` for it.
+
+Found on the way: the MMCM model counted `DCLK` edges as well as `CLKIN1`
+edges when the two sat on different clocks of the same design and locked twice
+as early as Verilator (the card top disagreed with the stub from event 31 on);
+fixed here, so `Cosim.compare` on `Hello.top/1` with `Hello.clocks/0` now
+agrees. Item 3 (unused instance outputs) is still open; items 2 (models see
+instance parameters, used by `DNA_PORTE2` and the MMCM) and 7 (co-simulation
+with internal top-level clocks) are met in exhdl.

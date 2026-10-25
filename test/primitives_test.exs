@@ -8,7 +8,8 @@ defmodule ExHdlXilinx.PrimitivesTest do
   alias ExHdlXilinx.Test.Lint
 
   @all ~w(BUFG BUFGCE BUFG_GT DNA_PORTE2 GTYE4_CHANNEL GTYE4_COMMON IBUF IBUFDS IBUFDS_GTE4
-          IDELAYE3 MMCME4_ADV OBUF ODELAYE3 PCIE4CE4 PLLE4_ADV STARTUPE3 SYSMONE4)
+          IDELAYE3 MMCME4_ADV OBUF ODELAYE3 PCIE4CE4 PLLE4_ADV RAMB18E2 RAMB36E2 STARTUPE3 SYSMONE4
+          URAM288 URAM288_BASE)
 
   defp port(m, n), do: Module.port(m, n)
 
@@ -110,6 +111,8 @@ defmodule ExHdlXilinx.PrimitivesTest do
     end
   end
 
+  # needs exhdl ex/w5-xil: CLKIN1 and DCLK share the clock
+  @tag :shared_clock
   test "MMCM model: LOCKED after the configured number of input cycles, RST clears it" do
     sim = Sim.new(mmcm_top())
     assert Sim.peek(sim, :locked) == 0
@@ -127,7 +130,7 @@ defmodule ExHdlXilinx.PrimitivesTest do
     assert Sim.new(mmcm_top()) |> Sim.step(3) |> Sim.peek(:locked) == 1
   end
 
-  test "DNA_PORTE2 model loads and shifts out the simulation value, MSB first" do
+  test "DNA_PORTE2 model loads and shifts out the instance SIM_DNA_VALUE, MSB first" do
     top =
       module "dna_top" do
         domain(:sys, reset: nil)
@@ -135,13 +138,15 @@ defmodule ExHdlXilinx.PrimitivesTest do
         shift = input(:shift, 1, domain: :sys)
         dout = output(:dout, 1)
 
-        d = P.inst(:d, P.dna_porte2(), connect: [READ: read, SHIFT: shift])
+        d =
+          P.inst(:d, P.dna_porte2(),
+            connect: [READ: read, SHIFT: shift],
+            params: [SIM_DNA_VALUE: {:bits, 96, Bitwise.bsl(0xA5, 88)}]
+          )
 
         dout <~ d[:DOUT]
       end
 
-    Application.put_env(:ex_hdl_xilinx, :sim_dna, Bitwise.bsl(0xA5, 88))
-    on_exit(fn -> Application.delete_env(:ex_hdl_xilinx, :sim_dna) end)
     sim = Sim.new(top) |> Sim.poke(:read, 1) |> Sim.step() |> Sim.poke(%{read: 0, shift: 1})
     {bits, _} = Enum.map_reduce(1..8, sim, fn _, s -> {Sim.peek(s, :dout), Sim.step(s)} end)
     assert bits == [1, 0, 1, 0, 0, 1, 0, 1]

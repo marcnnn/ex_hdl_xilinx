@@ -30,9 +30,40 @@ defmodule ExHdlXilinx.Hello do
 
   alias ExHdl.RTL.{CDC, Sim}
   alias ExHdlXilinx.Primitives, as: P
+  alias ExHdlXilinx.Primitives.Clocking
   alias ExHdlXilinx.Vivado.{Build, Runner}
 
   @signals [:clk100, {:leds, "led"}]
+
+  @mmcm [
+    CLKIN1_PERIOD: 10,
+    CLKFBOUT_MULT_F: 10,
+    DIVCLK_DIVIDE: 1,
+    CLKOUT0_DIVIDE_F: 4,
+    CLKOUT1_DIVIDE: 8
+  ]
+
+  @doc "Parameters of the MMCM instance."
+  def mmcm_params, do: @mmcm
+
+  @doc """
+  The `clocks:` option of `ExHdl.RTL.Sim.new/2` and `ExHdl.RTL.Cosim`: the
+  100 MHz input clock (period 10) and the MMCM outputs from its parameters
+  (`ExHdlXilinx.Primitives.Clocking.sim_clocks/3`, 1 unit = 1 ns).
+  """
+  def clocks do
+    inputs = for d <- [:ibuf, :c100], do: {d, [period: 10]}
+
+    outs =
+      Clocking.sim_clocks(@mmcm,
+        CLKOUT0: :c250_raw,
+        CLKOUT0: :c250,
+        CLKOUT1: :c125_raw,
+        CLKOUT1: :c125
+      )
+
+    inputs ++ outs
+  end
 
   @doc "Board signals used by the top: `[:clk100, {:leds, \"led\"}]`."
   def signals, do: @signals
@@ -77,13 +108,7 @@ defmodule ExHdlXilinx.Hello do
           clocks: [clkin1: :ibuf],
           clock: :c100,
           open: [:CLKFBIN],
-          params: [
-            CLKIN1_PERIOD: 10,
-            CLKFBOUT_MULT_F: 10,
-            DIVCLK_DIVIDE: 1,
-            CLKOUT0_DIVIDE_F: 4,
-            CLKOUT1_DIVIDE: 8
-          ]
+          params: @mmcm
         )
 
       mmcm[:CLKFBIN] <~ mmcm[:CLKFBOUT]
@@ -169,8 +194,7 @@ defmodule ExHdlXilinx.Hello do
   """
   @spec sim(keyword()) :: Sim.t()
   def sim(opts \\ []) do
-    clocks = [ibuf: 10, c100: 10, c250_raw: 4, c250: 4, c125_raw: 8, c125: 8]
-    Sim.new(top(opts), clocks: for({d, p} <- clocks, do: {d, [period: p]}))
+    Sim.new(top(opts), clocks: clocks())
   end
 end
 

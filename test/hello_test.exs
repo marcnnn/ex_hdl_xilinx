@@ -266,4 +266,15 @@ defmodule ExHdlXilinx.HelloTest do
   test "the card top builds for Verilator co-simulation against the stubs" do
     assert {:ok, %ExHdl.RTL.Cosim{}} = ExHdl.RTL.Cosim.build(Hello.top([]), [])
   end
+
+  @tag :verilator
+  test "Verilator and the BEAM simulator agree on the card top with the MMCM clock ratios" do
+    # internal clocks are driven by the harness (exhdl substitutes them), with the
+    # periods the MMCM parameters give
+    assert Hello.clocks()[:c250] == [period: 4, phase: 0]
+
+    assert ExHdl.RTL.Cosim.compare(Hello.top(blink_bit: 3), List.duplicate(%{}, 400),
+             clocks: Hello.clocks()
+           ) == :ok
+  end
 end

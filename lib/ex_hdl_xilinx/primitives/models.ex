@@ -6,10 +6,15 @@ defmodule ExHdlXilinx.Primitives.Models do
   The BEAM simulator drives every clock of a design ideally and cannot
   generate one from a model, so clock buffers and the MMCM/PLL clock outputs
   return 0: the clocks of the design are the (internal) clock signals of the
-  top module, whatever drives them. What the models do provide is the
-  control behaviour that gates logic: `LOCKED` goes high after
+  top module, whatever drives them. Their frequencies come from the instance
+  parameters through `ExHdlXilinx.Primitives.Clocking.sim_clocks/3`, which
+  yields the `clocks:` option of `ExHdl.RTL.Sim.new/2`. What the models do
+  provide is the control behaviour that gates logic: `LOCKED` goes high after
   `config :ex_hdl_xilinx, :lock_cycles` (default 16) cycles of the input
-  clock, and `RST` or `PWRDWN` clear it.
+  clock, and `RST` or `PWRDWN` clear it. An MMCM whose parameters
+  `Clocking.mmcm/1` rejects (VCO out of range, ...) never locks.
+
+  Memories are in `ExHdlXilinx.Primitives.Ram`.
   """
 
   defmodule Wire do
@@ -76,7 +81,8 @@ defmodule ExHdlXilinx.Primitives.Models do
 
   defmodule ClockBuf do
     @moduledoc false
-    # BUFG, BUFGCE, BUFG_GT: the output clock is not modelled.
+    # BUFG, BUFGCE, BUFG_GT: the output clock is not modelled (see
+    # `ExHdlXilinx.Primitives.Clocking.bufg_gt_clock/2` for the divided period).
     @behaviour ExHdl.RTL.Model
     @impl true
     def init(_), do: nil
@@ -88,19 +94,20 @@ defmodule ExHdlXilinx.Primitives.Models do
 
   defmodule Mmcm do
     @moduledoc false
-    # State: cycles of CLKIN1 since RST/PWRDWN were last released, capped.
+    # State: {cycles of CLKIN1 since RST/PWRDWN were last released, capped; lock
+    # allowed}. The instance parameters decide whether the MMCM can lock.
     @behaviour ExHdl.RTL.Model
     @outs ~w(CLKOUT0 CLKOUT0B CLKOUT1 CLKOUT1B CLKOUT2 CLKOUT2B CLKOUT3 CLKOUT3B CLKOUT4 CLKOUT5 CLKOUT6)
 
     @impl true
-    def init(_), do: 0
+    def init(params), do: {0, ExHdlXilinx.Primitives.Clocking.mmcm_valid?(params)}
 
     @impl true
-    def outputs(n, _) do
+    def outputs({n, ok}, _) do
       zero = Map.new(@outs ++ ["CLKFBOUT", "CLKFBOUTB"], &{String.to_atom(&1), 0})
 
       Map.merge(zero, %{
-        LOCKED: lock(n),
+        LOCKED: lock(n, ok),
         CLKFBSTOPPED: 0,
         CLKINSTOPPED: 0,
         CDDCDONE: 0,
@@ -111,11 +118,14 @@ defmodule ExHdlXilinx.Primitives.Models do
     end
 
     @impl true
-    def clock(_, n, ins) do
-      if ins[:RST] == 1 or ins[:PWRDWN] == 1, do: 0, else: min(n + 1, cycles())
+    def clock(dom, {n, ok}, ins) when dom in [:clkin1, :clkin] do
+      if ins[:RST] == 1 or ins[:PWRDWN] == 1, do: {0, ok}, else: {min(n + 1, cycles()), ok}
     end
 
-    defp lock(n), do: if(n >= cycles(), do: 1, else: 0)
+    # DCLK (the reconfiguration port) does not count
+    def clock(_, state, _), do: state
+
+    defp lock(n, ok), do: if(ok and n >= cycles(), do: 1, else: 0)
     defp cycles, do: Application.get_env(:ex_hdl_xilinx, :lock_cycles, 16)
   end
 
@@ -123,7 +133,7 @@ defmodule ExHdlXilinx.Primitives.Models do
     @moduledoc false
     @behaviour ExHdl.RTL.Model
     @impl true
-    defdelegate init(p), to: Mmcm
+    def init(_), do: {0, true}
 
     @impl true
     def outputs(n, ins) do
@@ -159,8 +169,8 @@ defmodule ExHdlXilinx.Primitives.Models do
     @behaviour ExHdl.RTL.Model
     import Bitwise
 
-    # The simulator hands a model the black box's default parameters, not the
-    # instance's, so the value comes from `config :ex_hdl_xilinx, :sim_dna`.
+    # `init/1` gets the instance parameters; `config :ex_hdl_xilinx, :sim_dna`
+    # still overrides `SIM_DNA_VALUE` for a whole test run.
     @impl true
     def init(params) do
       case Application.get_env(:ex_hdl_xilinx, :sim_dna, params[:SIM_DNA_VALUE]) do

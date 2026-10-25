@@ -16,10 +16,12 @@ defmodule ExHdlXilinx.Primitives do
   |---|---|---|---|
   | `IBUF`, `OBUF`, `IBUFDS` | complete | pass-through | high |
   | `IBUFDS_GTE4` | complete | pass-through | high |
-  | `BUFG`, `BUFGCE`, `BUFG_GT` | complete | O = 0 (clocks are ideal in the simulator) | high |
-  | `MMCME4_ADV` | complete, `DADDR` width 7 unsure | LOCKED after N cycles | high / medium |
+  | `BUFG`, `BUFGCE`, `BUFG_GT` | complete | O = 0 (clocks are ideal in the simulator; `Clocking.bufg_gt_clock/2` for `DIV`) | high |
+  | `MMCME4_ADV` | complete, `DADDR` width 7 unsure | LOCKED after N cycles if the VCO is in range; `Clocking.sim_clocks/3` for the output clocks | high / medium |
   | `PLLE4_ADV` | complete, `DADDR` width unsure | LOCKED after N cycles | medium |
   | `IDELAYE3`, `ODELAYE3` | complete | zero delay | high |
+  | `RAMB36E2`, `RAMB18E2` | TDP and SDP without cascade and ECC, `ADDR` widths unsure | `Ram.Ramb`: widths 1 - 72, latency, write modes | medium |
+  | `URAM288_BASE`, `URAM288` | without cascade and ECC | `Ram.Uram`: 4096 x 72, OREG, IREG_PRE | medium |
   | `STARTUPE3` | complete | EOS = 1 | high |
   | `DNA_PORTE2` | complete | shift register (bit order unverified) | high |
   | `SYSMONE4` | complete? `DADDR` width, I2C and `ADC_DATA` names unsure | none | medium |
@@ -51,8 +53,13 @@ defmodule ExHdlXilinx.Primitives do
   `ExHdl.Backends.SystemVerilog.RTL.generate(top, sim: true)` and
   `ExHdl.RTL.Cosim` include them; plain `generate/1` (and so Vivado, which
   owns these modules) does not. `sim_sources/1` collects them. The MMCM/PLL stub passes
-  `CLKIN1` to every output (wrong frequency) and raises `LOCKED` after 16
-  cycles; the others tie outputs to 0 except buffers and delays (`O = I`).
+  `CLKIN1` to every output without timing (wrong frequency) and raises `LOCKED` after 16
+  cycles (with Verilator `--timing`, or any other simulator, the MMCM stub
+  generates its outputs from the parameters and the BUFG_GT stub divides
+  by `DIV + 1`; `ExHdlXilinx.Primitives.Clocking` has the same arithmetic for
+  the BEAM `clocks:` option). The memories simulate the same behaviour as their
+  BEAM models (`ExHdlXilinx.Primitives.Ram`). The others tie outputs to 0
+  except buffers and delays (`O = I`).
   """
 
   alias ExHdl.RTL.Module
