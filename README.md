@@ -179,3 +179,7 @@ IP generation and the hello top are implemented and tested without Vivado
 Vivado yet; IP property names and the GT/SYSMON/PCIe port subsets are the
 parts most likely to need fixes on the first real build. `NEEDS.md` lists the
 gaps found in exhdl.
+
+## License
+
+Apache-2.0, see `LICENSE`.

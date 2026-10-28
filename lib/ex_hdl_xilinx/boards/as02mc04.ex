@@ -54,7 +54,7 @@ defmodule ExHdlXilinx.Boards.AS02MC04 do
     essenceia: "https://essenceia.github.io/projects/alibaba_cloud_fpga/",
     dkozel: "https://github.com/dkozel/Alibaba-Cloud-FPGA",
     forencich: "Alex Forencich's XDC for the card, as quoted by :essenceia (gpio, eeprom)",
-    aes67_xdc: "../AES67/FPGA/boards/xilinx/alibaba_ku3p/alibaba_ku3p.xdc (copy, untested)"
+    aes67_xdc: "an earlier, untested XDC for the card from a private project"
   }
 
   @pcie_rx ~w(P2 T2 V2 Y2 AB2 AD2 AE4 AF2)
